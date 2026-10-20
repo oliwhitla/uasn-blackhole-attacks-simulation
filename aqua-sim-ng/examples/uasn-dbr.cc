@@ -135,6 +135,19 @@ main(int argc, char* argv[])
   mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
   mobility.Install(allNodes);
 
+  // Connectivity check: if no relay is within range of the source or the sink,
+  // nothing can be delivered no matter what the routing does.
+  Ptr<MobilityModel> srcMob = source->GetObject<MobilityModel>();
+  Ptr<MobilityModel> sinkMob = sink->GetObject<MobilityModel>();
+  uint32_t srcNeighbours = 0;
+  uint32_t sinkNeighbours = 0;
+  for (uint32_t i = 0; i < relays; i++)
+    {
+      Ptr<MobilityModel> m = relayNodes.Get(i)->GetObject<MobilityModel>();
+      srcNeighbours += (m->GetDistanceFrom(srcMob) <= range);
+      sinkNeighbours += (m->GetDistanceFrom(sinkMob) <= range);
+    }
+
   // Aqua-Sim stack: range-limited channel, broadcast MAC, DBR routing
   AquaSimChannelHelper channel = AquaSimChannelHelper::Default();
   channel.SetPropagation("ns3::AquaSimRangePropagation");
@@ -183,7 +196,14 @@ main(int argc, char* argv[])
   double txCost = delivered ? double(g_txCount) / delivered : 0.0;
 
   std::cout << "relays=" << relays << " range=" << range << " box=" << width << "x" << length
-            << "x" << depth << " run=" << RngSeedManager::GetRun() << "\n";
+            << "x" << depth << " run=" << RngSeedManager::GetRun()
+            << " relaysInRangeOfSource=" << srcNeighbours
+            << " relaysInRangeOfSink=" << sinkNeighbours << "\n";
+  if (srcNeighbours == 0 || sinkNeighbours == 0)
+    {
+      std::cout << "WARNING: source or sink has no relay in range; this layout "
+                   "cannot deliver anything\n";
+    }
   std::cout << "sent=" << sent << " delivered=" << delivered << " pdr=" << pdr
             << " avgDelay=" << avgDelay << "s tx=" << g_txCount << " txCost=" << txCost
             << " duplicates=" << g_duplicates << " unmatched=" << g_unmatched << "\n";

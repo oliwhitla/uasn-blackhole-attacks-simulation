@@ -410,6 +410,11 @@ VBHeader::GetExtraInfo()
 NS_OBJECT_ENSURE_REGISTERED(DBRHeader);
 
 DBRHeader::DBRHeader()
+  : m_position(Vector(0, 0, 0)),
+    m_packetID(0),
+    m_mode(DBRH_DATA_GREEDY),
+    m_nhops(0),
+    m_depth(0)
 {
 }
 
