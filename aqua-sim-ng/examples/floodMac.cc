@@ -96,7 +96,7 @@ LocalExperiment::Run()
                         "InitialEnergy", DoubleValue(50),
                         "IdlePower", DoubleValue(0.01));
   asHelper.SetMac("ns3::AquaSimBroadcastMac");
-  asHelper.SetRouting("ns3::AquaSimDDBR");
+  asHelper.SetRouting("ns3::AquaSimDBR");
 
   MobilityHelper mobility;
   MobilityHelper mobilitysink;
@@ -206,9 +206,9 @@ LocalExperiment::Run()
   std::cout << "-----------Running Simulation-----------\n";
   Simulator::Stop(Seconds(simStop + 1));
   Simulator::Run();
-  Simulator::Destroy(); //null all nodes too??
   std::cout << "-----------Printing Simulation Results-----------\n";
   asHelper.GetChannel()->PrintCounters();
+  Simulator::Destroy();
   std::cout << "End.\n";
 }
 
