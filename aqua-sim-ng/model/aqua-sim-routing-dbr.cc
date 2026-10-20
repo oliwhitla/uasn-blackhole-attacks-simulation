@@ -25,6 +25,7 @@
 
 #include "ns3/ipv4-header.h"
 #include "ns3/log.h"
+#include <algorithm>
 
 using namespace ns3;
 
@@ -785,7 +786,7 @@ AquaSimDBR::Send_Callback(void)
 	{
 		q = m_pq.front();
 		m_latest = q->m_sendTime;
-    m_sendTimer->Schedule(Seconds(m_latest - Simulator::Now().ToDouble(Time::S)));
+    m_sendTimer->Schedule(Seconds(std::max(0.0, m_latest - Simulator::Now().ToDouble(Time::S))));
 	}
 }
 
@@ -1020,7 +1021,13 @@ AquaSimDBR::Recv(Ptr<Packet> p, const Address &dest, uint16_t protocolNumber)
   AquaSimPtTag ptag;
 
 	p->RemoveHeader(ash);
-  if (ash.GetNumForwards() <= 0)  //no headers //TODO create specalized Application instead of using this hack.
+  // A packet coming down from this node's own application has no DBR header
+  // yet. Copies arriving from the channel are always marked UP (see
+  // AquaSimChannel), so use the direction rather than GetNumForwards(): the
+  // source never increments the forward count, so first-hop neighbours used
+  // to stack an empty (uninitialised) DBR header on top of the real one.
+  bool fromMyApp = (ash.GetDirection() == AquaSimHeader::DOWN);
+  if (fromMyApp)
 	{
 		//p->AddHeader(iph);
 		//populate dbr header??
@@ -1060,8 +1067,7 @@ AquaSimDBR::Recv(Ptr<Packet> p, const Address &dest, uint16_t protocolNumber)
 		return true;
 	}
 
-	if ((src == GetNetDevice()->GetAddress()) &&
-	    (ash.GetNumForwards() == 0))
+	if (fromMyApp)
 	{// packet I'm originating
 
   p->RemoveHeader(ash);
@@ -1243,7 +1249,11 @@ AquaSimDBR::HandlePktForward(Ptr<Packet> p)
 		// only forward the packet from lower level
 		if (delta < DBR_DEPTH_THRESHOLD)
 		{
-			//p->AddHeader(dbrh);
+			// Heard a shallower node forward this packet: cancel our own pending
+			// copy. purge() looks the packet up by its DBR packet ID, so the DBR
+			// header has to be put back first (this line used to be commented
+			// out, so purge never matched and suppression never happened).
+			p->AddHeader(dbrh);
       p->AddHeader(ash);
       p->AddPacketTag(ptag);
 			m_pq.purge(p);
@@ -1262,6 +1272,9 @@ AquaSimDBR::HandlePktForward(Ptr<Packet> p)
 		// compute the delay
 		//delay = DBR_DEPTH_THRESHOLD / delta * DBR_SCALE;
 		delta = 1.0 - delta / DBR_MAX_RANGE;
+		// A depth gain larger than DBR_MAX_RANGE (possible when the channel has no
+		// range limit) would give a negative delay, which ns-3 rejects.
+		if (delta < 0) delta = 0;
 		delay = DBR_MIN_BACKOFF + 4.0 * delta * DBR_MAX_DELAY;
 
 		// set time out for the packet
