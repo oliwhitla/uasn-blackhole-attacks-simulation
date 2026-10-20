@@ -1124,7 +1124,7 @@ AquaSimDBR::Recv(Ptr<Packet> p, const Address &dest, uint16_t protocolNumber)
 	return true;
 }
 
-#ifdef USE_FLOODING_ALG
+#if USE_FLOODING_ALG  // was #ifdef, which is true even when the macro is 0
 void
 AquaSimDBR::HandlePktForward(Ptr<Packet> p)
 {
@@ -1326,6 +1326,7 @@ AquaSimDBR::HandlePktForward(Ptr<Packet> p)
 	{
 		m_pq.insert(q);
 		m_latest = expected_send_time;
+    m_sendTimer->Cancel();  // a purge can leave the timer pending on an empty queue
     m_sendTimer->Schedule(Seconds(delay));
 	}
 	else
@@ -1338,6 +1339,7 @@ AquaSimDBR::HandlePktForward(Ptr<Packet> p)
 			if (expected_send_time < m_latest)
 			{
 				m_latest = expected_send_time;
+        m_sendTimer->Cancel();  // ns-3 aborts if a running timer is rescheduled
         m_sendTimer->Schedule(Seconds(delay));
 			}
 		}

@@ -238,6 +238,15 @@ build_lib_example(
 )
 
 build_lib_example(
+    NAME UasnDbr
+    SOURCE_FILES examples/uasn-dbr.cc
+    LIBRARIES_TO_LINK ${libnetwork}
+                      ${libenergy}
+                      ${libmobility}
+                      ${libaqua-sim-ng}
+)
+
+build_lib_example(
     NAME LibraGridTest
     SOURCE_FILES examples/libra_grid_test.cc
     LIBRARIES_TO_LINK ${libnetwork}
