@@ -37,6 +37,7 @@
 #include "ns3/timer.h"
 
 #include <deque>
+#include <map>
 
 #define	DBR_PORT		0xFF
 
@@ -197,6 +198,35 @@ public:
 	virtual bool Recv(Ptr<Packet> packet, const Address &dest, uint16_t protocolNumber);
 	virtual bool Recv2(Ptr<Packet> packet, const Address &dest, uint16_t protocolNumber);
 
+  /*
+   * CSC 466 attack model. Every node is honest (ATTACK_NONE) unless the
+   * scenario calls SetAttack() on it. Only data packets this node would
+   * forward are affected; beacons and packets addressed to this node are not.
+   *
+   *   ATTACK_BLACKHOLE   drop every packet, transmit nothing (Das et al. 2024)
+   *   ATTACK_GRAYHOLE    drop each packet with probability dropProb, forward the
+   *                      rest as an honest DBR node would (Das et al. 2024)
+   *   ATTACK_DEPTHSPOOF  immediately re-broadcast the packet claiming height
+   *                      spoofZ (shallower than everyone), so honest neighbours
+   *                      cancel their copies (Zuba et al. 2013). The copy is
+   *                      real: the sink still accepts it if it hears it directly.
+   *   ATTACK_SINKHOLE    same fake-shallow broadcast to win forwarding, but the
+   *                      copy is addressed to nobody, so it is never delivered:
+   *                      it attracts the packet and then drops it (Sun et al. 2026)
+   */
+  enum AttackMode
+  {
+    ATTACK_NONE = 0,
+    ATTACK_BLACKHOLE = 1,
+    ATTACK_GRAYHOLE = 2,
+    ATTACK_DEPTHSPOOF = 3,
+    ATTACK_SINKHOLE = 4
+  };
+  void SetAttack(AttackMode mode, double dropProb = 1.0, double spoofZ = 1.0e4);
+  AttackMode GetAttack() const { return m_attack; }
+  uint32_t GetAttackDrops() const { return m_attackDrops; } // packets dropped (unique IDs)
+  uint32_t GetSpoofTx() const { return m_spoofTx; }         // fake-depth broadcasts sent
+
 	//virtual void Tap(const Ptr<Packet> p);
 
 	void DeadNeighb_Callback(NeighbEnt *ne);
@@ -228,6 +258,17 @@ protected:
 
 	void HandlePktForward(Ptr<Packet> p);
 	virtual void DoDispose();
+
+  // attack state (see SetAttack)
+  bool HandleAttack(Ptr<Packet> p);  // true if the attack consumed the packet
+  void SendSpoofedCopy(Ptr<Packet> p, bool deliverable);
+  AttackMode m_attack;
+  double m_dropProb;
+  double m_spoofZ;
+  std::map<uint32_t, bool> m_attackSeen; // DBR packet ID -> dropped?
+  uint32_t m_attackDrops;
+  uint32_t m_spoofTx;
+  Ptr<UniformRandomVariable> m_attackRand;
 };
 
 }  // namespace ns3

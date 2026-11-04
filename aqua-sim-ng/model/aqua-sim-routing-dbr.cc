@@ -647,7 +647,9 @@ int main(void)
 NS_OBJECT_ENSURE_REGISTERED(AquaSimDBR);
 
 AquaSimDBR::AquaSimDBR() :
-	m_bInt(DBR_BEACON_INT), m_bDesync(DBR_BEACON_DESYNC), m_pktCnt(0)
+	m_bInt(DBR_BEACON_INT), m_bDesync(DBR_BEACON_DESYNC), m_pktCnt(0),
+	m_attack(ATTACK_NONE), m_dropProb(1.0), m_spoofZ(1.0e4),
+	m_attackDrops(0), m_spoofTx(0)
 {
 	m_nTab = new NeighbTable();
 
@@ -1125,9 +1127,124 @@ AquaSimDBR::Recv(Ptr<Packet> p, const Address &dest, uint16_t protocolNumber)
 		return true;
 	}
 
-	// packet I'm forwarding
+	// packet I'm forwarding: a malicious relay gets the first look at it
+	if (m_attack != ATTACK_NONE && HandleAttack(p))
+		return true;
+
 	HandlePktForward(p);
 	return true;
+}
+
+/*
+ * CSC 466 attack model (see aqua-sim-routing-dbr.h).
+ */
+void
+AquaSimDBR::SetAttack(AttackMode mode, double dropProb, double spoofZ)
+{
+  m_attack = mode;
+  m_dropProb = dropProb;
+  m_spoofZ = spoofZ;
+  if (!m_attackRand)
+    {
+      // Created here, not in the constructor, so adding attackers does not
+      // shift the random streams honest nodes use. A fixed stream per node
+      // keeps grayhole decisions reproducible for a given --RngRun.
+      m_attackRand = CreateObject<UniformRandomVariable>();
+      m_attackRand->SetStream(1000 + GetNetDevice()->GetNode()->GetId());
+    }
+}
+
+// Returns true when the attack has consumed the packet (it must not be
+// forwarded normally), false to let honest DBR forwarding carry on.
+bool
+AquaSimDBR::HandleAttack(Ptr<Packet> p)
+{
+  AquaSimHeader ash;
+  DBRHeader dbrh;
+  p->RemoveHeader(ash);
+  p->PeekHeader(dbrh);
+  p->AddHeader(ash);
+  uint32_t id = dbrh.GetPacketID();
+
+  // Decide once per packet: a node hears several copies of the same packet,
+  // and a grayhole should not drop one copy and forward the next.
+  auto seen = m_attackSeen.find(id);
+  bool first = (seen == m_attackSeen.end());
+
+  switch (m_attack)
+    {
+    case ATTACK_BLACKHOLE:
+      if (first)
+        {
+          m_attackSeen[id] = true;
+          m_attackDrops++;
+        }
+      return true; // silent: no transmission at all
+
+    case ATTACK_GRAYHOLE:
+      if (first)
+        {
+          bool drop = m_attackRand->GetValue() < m_dropProb;
+          m_attackSeen[id] = drop;
+          m_attackDrops += drop;
+          return drop;
+        }
+      return seen->second; // forwarded packets go through honest DBR as usual
+
+    case ATTACK_DEPTHSPOOF:
+    case ATTACK_SINKHOLE:
+      if (first)
+        {
+          m_attackSeen[id] = true;
+          if (m_attack == ATTACK_SINKHOLE)
+            m_attackDrops++;
+          SendSpoofedCopy(p, m_attack == ATTACK_DEPTHSPOOF);
+        }
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+// Broadcast the packet straight away claiming height m_spoofZ. Every honest
+// neighbour is "deeper" than that claim, so each one cancels its queued copy
+// (HandlePktForward purges on delta < 0) and none forwards ours.
+void
+AquaSimDBR::SendSpoofedCopy(Ptr<Packet> p, bool deliverable)
+{
+  Ptr<Packet> copy = p->Copy();
+  AquaSimHeader ash;
+  DBRHeader dbrh;
+  AquaSimPtTag ptag;
+  copy->RemoveHeader(ash);
+  copy->RemoveHeader(dbrh);
+  copy->RemovePacketTag(ptag);
+
+  dbrh.SetDepth(m_spoofZ);
+  dbrh.SetOwner(dbrh.GetPrevHop());
+  dbrh.SetPrevHop(AquaSimAddress::ConvertFrom(GetNetDevice()->GetAddress()));
+
+  ash.SetNumForwards(ash.GetNumForwards() + 1);
+  ash.SetDirection(AquaSimHeader::DOWN);
+  ash.SetSize(dbrh.Size() + IP_HDR_LEN);
+  ash.SetNextHop(AquaSimAddress::GetBroadcast());
+  if (!deliverable)
+    {
+      // Sinkhole: address the copy to a node that does not exist, so even the
+      // sink treats it as a packet to forward (and, being deeper than the
+      // claim, discards it).
+      ash.SetDAddr(AquaSimAddress(0xFFFE));
+    }
+  ptag.SetPacketType(AquaSimPtTag::PT_DBR);
+
+  copy->AddHeader(dbrh);
+  copy->AddHeader(ash);
+  copy->AddPacketTag(ptag);
+  m_spoofTx++;
+  // tiny jitter only, so the lie arrives before honest holding timers expire
+  Simulator::Schedule(Seconds(m_attackRand->GetValue() * 0.01), &AquaSimRouting::SendDown,
+                      this, copy, AquaSimAddress::GetBroadcast(), Seconds(0));
 }
 
 #if USE_FLOODING_ALG  // was #ifdef, which is true even when the macro is 0
