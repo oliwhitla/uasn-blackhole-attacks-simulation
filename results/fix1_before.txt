@@ -1,0 +1,5 @@
+relays=100 range=100 box=300x300x500 run=1 relaysInRangeOfSource=5 relaysInRangeOfSink=2 reachable=yes
+attack=none placement=none bad=0 (0% of relays, 0 next to the sink)
+NOTE: --legacyNewPacketTest=1, running Aqua-Sim's ORIGINAL buggy new-packet test (expect about 1 packet delivered)
+sent=50 delivered=1 pdr=0.02 avgDelay=3.35254s tx=102 txCost=102 duplicates=1 attackerDrops=0 spoofTx=0
+CSV,1,100,100,300,300,500,50,none,none,0,0,0,1,50,1,0.02,3.35254,102,102,1,0,0,5,2,1,0,1

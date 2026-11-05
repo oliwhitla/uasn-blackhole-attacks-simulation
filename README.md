@@ -12,6 +12,7 @@ depth-based routing (DBR), malicious relays and depth-band placement.
 | `aqua-sim-ng/model/aqua-sim-routing-dbr.*` | DBR + `SetAttack()` |
 | `scripts/run_experiments.py` | Runs the attack x placement x fraction x seed grid, writes CSV |
 | `scripts/analyze.py` | Averages the CSV, writes `summary.csv` and graphs |
+| `results/` | Saved output for the report (see `results/README.md`) |
 
 ## Setup (once)
 

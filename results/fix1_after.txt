@@ -1,0 +1,4 @@
+relays=100 range=100 box=300x300x500 run=1 relaysInRangeOfSource=5 relaysInRangeOfSink=2 reachable=yes
+attack=none placement=none bad=0 (0% of relays, 0 next to the sink)
+sent=50 delivered=50 pdr=1 avgDelay=3.33945s tx=1890 txCost=37.8 duplicates=50 attackerDrops=0 spoofTx=0
+CSV,1,100,100,300,300,500,50,none,none,0,0,0,1,50,50,1,3.33945,1890,37.8,50,0,0,5,2,1,0,0
