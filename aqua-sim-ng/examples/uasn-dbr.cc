@@ -31,6 +31,7 @@
  *   ./ns3 run "UasnDbr --attack=blackhole --placement=shallow --fraction=0.1 --RngRun=1"
  *   ./ns3 run "UasnDbr --attack=grayhole --dropProb=0.5 --placement=deep --fraction=0.2"
  *   ./ns3 run "UasnDbr --attack=depthspoof --placement=middle --badNodes=1"
+ *   ./ns3 run "UasnDbr --legacyNewPacketTest=1"  (original DBR bug, ~1/50 delivered)
  *   ./ns3 run "UasnDbr --csvHeader"              (print the CSV column names and exit)
  */
 
@@ -66,7 +67,7 @@ const char* CSV_HEADER =
   "run,relays,range,width,length,depth,packets,attack,placement,fractionAsked,fraction,bad,"
   "dropProb,"
   "sent,delivered,pdr,avgDelay,tx,txCost,duplicates,attackerDrops,spoofTx,"
-  "srcNeighbours,sinkNeighbours,reachable,badInRangeOfSink";
+  "srcNeighbours,sinkNeighbours,reachable,badInRangeOfSink,legacyNewPacketTest";
 
 void
 SinkRx(Ptr<const Packet> p)
@@ -167,6 +168,7 @@ main(int argc, char* argv[])
   uint32_t bands = 3;
   double dropProb = 0.5;             // grayhole drop probability
   double spoofZ = -1;                // claimed height for spoofing; default depth + range
+  bool legacyNewPacketTest = false;  // reproduce the original DBR bug (Fix 1)
   bool csvHeader = false;
   bool verbose = true;
 
@@ -187,6 +189,9 @@ main(int argc, char* argv[])
   cmd.AddValue("bands", "Number of depth bands", bands);
   cmd.AddValue("dropProb", "Grayhole drop probability (0-1)", dropProb);
   cmd.AddValue("spoofZ", "Height a spoofer/sinkhole claims (default depth+range)", spoofZ);
+  cmd.AddValue("legacyNewPacketTest",
+               "Use Aqua-Sim's original buggy new-packet test in DBR (before/after demo)",
+               legacyNewPacketTest);
   cmd.AddValue("csvHeader", "Print the CSV column names and exit", csvHeader);
   cmd.AddValue("verbose", "Print the human-readable summary", verbose);
   cmd.Parse(argc, argv);
@@ -196,6 +201,9 @@ main(int argc, char* argv[])
       std::cout << "CSVHDR," << CSV_HEADER << "\n";
       return 0;
     }
+
+  // Must be set before the DBR objects are created, so every node gets it.
+  Config::SetDefault("ns3::AquaSimDBR::LegacyNewPacketTest", BooleanValue(legacyNewPacketTest));
 
   // AquaSim addresses are 1-byte style and 255 is broadcast: keep below it.
   NS_ABORT_MSG_IF(relays + 2 >= 255, "At most 252 relays are supported");
@@ -399,6 +407,11 @@ main(int argc, char* argv[])
       if (mode == AquaSimDBR::ATTACK_DEPTHSPOOF || mode == AquaSimDBR::ATTACK_SINKHOLE)
         std::cout << " spoofZ=" << spoofZ;
       std::cout << "\n";
+      if (legacyNewPacketTest)
+        {
+          std::cout << "NOTE: --legacyNewPacketTest=1, running Aqua-Sim's ORIGINAL buggy "
+                       "new-packet test (expect about 1 packet delivered)\n";
+        }
       if (!reachable)
         {
           std::cout << "WARNING: even with no attackers, DBR cannot reach the sink in this "
@@ -419,7 +432,7 @@ main(int argc, char* argv[])
             << delivered << "," << pdr << "," << avgDelay << "," << g_txCount << "," << txCost
             << "," << g_duplicates << "," << attackerDrops << "," << spoofTx << ","
             << srcNeighbours << "," << sinkNeighbours << "," << (reachable ? 1 : 0) << ","
-            << badNearSink << "\n";
+            << badNearSink << "," << (legacyNewPacketTest ? 1 : 0) << "\n";
 
   Simulator::Destroy();
   return 0;

@@ -25,6 +25,7 @@
 
 #include "ns3/ipv4-header.h"
 #include "ns3/log.h"
+#include "ns3/boolean.h"
 #include <algorithm>
 
 using namespace ns3;
@@ -649,7 +650,7 @@ NS_OBJECT_ENSURE_REGISTERED(AquaSimDBR);
 AquaSimDBR::AquaSimDBR() :
 	m_bInt(DBR_BEACON_INT), m_bDesync(DBR_BEACON_DESYNC), m_pktCnt(0),
 	m_attack(ATTACK_NONE), m_dropProb(1.0), m_spoofZ(1.0e4),
-	m_attackDrops(0), m_spoofTx(0)
+	m_attackDrops(0), m_spoofTx(0), m_legacyNewPacketTest(false)
 {
 	m_nTab = new NeighbTable();
 
@@ -682,6 +683,13 @@ AquaSimDBR::GetTypeId()
   static TypeId tid = TypeId ("ns3::AquaSimDBR")
     .SetParent<AquaSimRouting> ()
     .AddConstructor<AquaSimDBR> ()
+    .AddAttribute ("LegacyNewPacketTest",
+      "Reproduce the original Aqua-Sim NG bug: decide 'new packet from my "
+      "application' by a forward count of zero instead of by header direction. "
+      "For before/after comparisons only; experiments leave this false.",
+      BooleanValue (false),
+      MakeBooleanAccessor (&AquaSimDBR::m_legacyNewPacketTest),
+      MakeBooleanChecker ())
   ;
   return tid;
 }
@@ -1029,6 +1037,8 @@ AquaSimDBR::Recv(Ptr<Packet> p, const Address &dest, uint16_t protocolNumber)
   // source never increments the forward count, so first-hop neighbours used
   // to stack an empty (uninitialised) DBR header on top of the real one.
   bool fromMyApp = (ash.GetDirection() == AquaSimHeader::DOWN);
+  if (m_legacyNewPacketTest)
+    fromMyApp = (ash.GetNumForwards() <= 0);  // original (buggy) test
   if (fromMyApp)
 	{
 		//p->AddHeader(iph);
@@ -1069,7 +1079,10 @@ AquaSimDBR::Recv(Ptr<Packet> p, const Address &dest, uint16_t protocolNumber)
 		return true;
 	}
 
-	if (fromMyApp)
+	bool originating = m_legacyNewPacketTest
+	    ? ((src == GetNetDevice()->GetAddress()) && (ash.GetNumForwards() == 0)) // original
+	    : fromMyApp;
+	if (originating)
 	{// packet I'm originating
 
   p->RemoveHeader(ash);

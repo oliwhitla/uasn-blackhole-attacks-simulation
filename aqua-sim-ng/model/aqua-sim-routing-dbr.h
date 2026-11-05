@@ -269,6 +269,9 @@ protected:
   uint32_t m_attackDrops;
   uint32_t m_spoofTx;
   Ptr<UniformRandomVariable> m_attackRand;
+
+  // true = use the original "forward count == 0" new-packet test (bug repro)
+  bool m_legacyNewPacketTest;
 };
 
 }  // namespace ns3

@@ -92,13 +92,44 @@ simulations at once; use `--jobs 1` if the VM runs short of memory.
 with delivery ratio, delay and transmission cost against the percentage of bad
 nodes, one line per placement, with 95% confidence intervals.
 
+## Reproducing the original DBR bug (`--legacyNewPacketTest`)
+
+Aqua-Sim NG's DBR decided "this is a new packet from my own application" by a
+forward count of zero. The source never increments that count, so its
+neighbours also saw zero, stacked a second, empty DBR header on top and read
+packet ID 0 for every packet. DBR forwards each ID once, so packets 2-50 were
+discarded as duplicates. We test the header direction instead (the channel
+marks every received copy UP).
+
+`--legacyNewPacketTest=1` switches every node back to the original test, so
+the before/after comparison can be shown with one command each:
+
+```bash
+cd ~/ns3-workspace/ns-allinone-3.41/ns-3.41
+./ns3 run "UasnDbr --RngRun=1"                          # fixed:    delivered=50 (of 50)
+./ns3 run "UasnDbr --RngRun=1 --legacyNewPacketTest=1"  # original: delivered=1  (of 50)
+```
+
+Expected results:
+
+| Seed | Fixed (`=0`, default) | Original (`=1`) |
+|---|---|---|
+| 1 | 50/50 | 1/50 |
+| 2 | 50/50 | 1/50 |
+| 3 | 50/50 | 1/50 |
+
+The run prints a `NOTE:` line when the option is on, and the last CSV column
+(`legacyNewPacketTest`) records it. It only reverts this one fix; the other DBR
+fixes stay in place. Leave it off for all real experiments.
+
 ## CSV columns
 
 `run, relays, range, width, length, depth, packets, attack, placement,
 fractionAsked, fraction, bad, dropProb, sent, delivered, pdr, avgDelay, tx,
 txCost, duplicates, attackerDrops, spoofTx, srcNeighbours, sinkNeighbours,
-reachable, badInRangeOfSink`
+reachable, badInRangeOfSink, legacyNewPacketTest`
 
 - `fraction` is the real fraction of bad nodes. It is lower than `fractionAsked` when a band has too few relays.
 - `reachable` is 1 if DBR could reach the sink with every node honest.
 - `badInRangeOfSink` is the number of bad nodes that are one hop from the sink.
+- `legacyNewPacketTest` is 1 if the run used the original buggy DBR test (see above).
